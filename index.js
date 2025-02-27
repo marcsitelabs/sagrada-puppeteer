@@ -1,4 +1,8 @@
 const puppeteer = require('puppeteer');
+const { Storage } = require('@google-cloud/storage');
+
+const storage = new Storage();
+const bucketName = 'safa-ava'; // Replace with your actual bucket name
 
 exports.productads = async (req, res) => {
     console.log("🚀 Starting Puppeteer script...");
@@ -12,15 +16,10 @@ exports.productads = async (req, res) => {
 
         const page = await browser.newPage();
         await page.setViewport({ width: 1500, height: 1300 });
-        console.log("🖥️ New page created and viewport set.");
 
         console.log("🌍 Navigating to ticket page...");
         await page.goto('https://tickets.sagradafamilia.org/ca/1-individual/4375-sagrada-familia');
-        console.log("✅ Page loaded successfully!");
-
-        console.log("⏳ Waiting for the calendar to load...");
         await page.waitForSelector('table.CalendarMonth_table.CalendarMonth_table_1', { timeout: 10000 });
-        console.log("📅 Calendar detected on the page.");
 
         let results = [];
         let monthCount = 0;
@@ -30,7 +29,6 @@ exports.productads = async (req, res) => {
             return await page.evaluate(() => {
                 let monthDiv = document.querySelector('.CalendarMonth[data-visible="true"]');
                 if (!monthDiv) return [];
-
                 return Array.from(monthDiv.querySelectorAll('.CalendarDay_button'))
                     .filter(button => {
                         let parent = button.closest('[role="button"]');
@@ -158,8 +156,17 @@ exports.productads = async (req, res) => {
         await browser.close();
         console.log("🛑 Browser closed.");
 
-        console.log("📤 Sending response...");
-        res.status(200).json({ success: true, data: results });
+        // Save to Cloud Storage
+        const fileName = `scraped_data_${Date.now()}.json`;
+        const file = storage.bucket(bucketName).file(fileName);
+        await file.save(JSON.stringify(results, null, 2));
+        console.log(`✅ Data saved to Cloud Storage: ${fileName}`);
+
+        // Generate public URL (Optional)
+        const publicUrl = `https://storage.googleapis.com/${bucketName}/${fileName}`;
+
+        // Send response immediately
+        res.status(202).json({ success: true, message: "Data processing started", dataUrl: publicUrl });
 
     } catch (error) {
         console.error("❌ An error occurred:", error);
